@@ -1,9 +1,7 @@
+import EditorPage from "./pages/EditorPage"
+
 function App() {
-  return (
-    <div>
-      Hello Editor
-    </div>
-  )
+  return <EditorPage />  
 }
 
 export default App
