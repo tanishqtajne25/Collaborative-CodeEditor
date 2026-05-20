@@ -1,21 +1,21 @@
-const express = require("express");
 const http = require("http");
-const { server } = require("socket.io")
+const WebSocket = require("ws");
+const Y = require("yjs");
 
-const app = express();
+const setupWSConnection = require("y-websocket/bin/utils.cjs").setupWSConnection;
 
-const server = http.createServer(app);
+const server = http.createServer();
 
-const io = new Server(server, {
-    cors: {
-        origin: "*",
-    },
-});
+const wss = new WebSocket.Server({ server });
 
-io.on("connection", (socket) => {
-    console.log("User connected: ", socket.id);
+wss.on("connection", (ws, req) => {
+  console.log("Client connected");
+
+  setupWSConnection(ws, req, {
+    gc: true,
+  });
 });
 
 server.listen(3001, () => {
-    console.log("server running on port 3001");
+  console.log("Yjs websocket server running on port 3001");
 });
