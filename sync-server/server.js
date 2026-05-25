@@ -16,6 +16,9 @@ wss.on("connection", (ws, req) => {
   });
 });
 
-server.listen(3001, () => {
-  console.log("Yjs websocket server running on port 3001");
+
+
+const PORT = 3001;
+server.listen(PORT, () => {
+    console.log(`Yjs WebSocket server running on ws://localhost:${PORT}`);
 });
