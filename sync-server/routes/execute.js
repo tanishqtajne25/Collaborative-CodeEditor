@@ -1,4 +1,5 @@
 const express = require("express");
+const { processCode } = require("../services/executionService");
 
 const router = express.Router();
 
@@ -7,17 +8,26 @@ const router = express.Router();
  * @ route
 */
 router.post("/", async (req, res) => {
-    console.log("Execution request recieved");
+    try {
+        const { language, code } = req.body;
 
-    const {language, code} = req.body;
+        const result = await processCode(code);
 
-    res.json({
-        success: true,
-        message: "Execution Endpoint Working",
-        language: language || "not provided",
-        codeLength: code ? code.length : 0,
-        output : "Hello from Backend"
-    });
+        res.json({
+            success: true,
+            language,
+            exitCode: result.exitCode,
+            stdout: result.stdout,
+            stderr: result.stderr,
+        });
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
 });
 
 module.exports = router;
