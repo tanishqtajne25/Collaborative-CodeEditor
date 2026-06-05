@@ -14,6 +14,10 @@ async function processCode(code) {
     return new Promise((resolve, reject) => {
         const python = spawn("python", [filePath]);
 
+        const timeout = setTimeout(() => {
+            python.kill("SIGKILL");
+        }, 5000);
+
         let stdout = "";
         let stderr = "";
 
@@ -26,6 +30,8 @@ async function processCode(code) {
         });
 
         python.on("close", (code) => {
+            clearTimeout(timeout);
+
             resolve({
                 exitCode: code,
                 stdout,
