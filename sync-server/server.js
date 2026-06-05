@@ -1,24 +1,11 @@
 const http = require("http");
 const WebSocket = require("ws");
-const Y = require("yjs");
+const Y = require("yjs")
+const {setupWSConnection, getYDoc} = require("y-websocket/bin/utils");
+const redis = require("ioredis");
 
-const setupWSConnection = require("y-websocket/bin/utils").setupWSConnection;
+// 1. Initiallize redis clients, pub and sub, need seperate connections
+const pubClient = new Redis();
+const subClient = new Redis();
 
-const server = http.createServer();
-
-const wss = new WebSocket.Server({ server });
-
-wss.on("connection", (ws, req) => {
-  console.log("Client connected");
-
-  setupWSConnection(ws, req, {
-    gc: true,
-  });
-});
-
-
-
-const PORT = 3001;
-server.listen(PORT, () => {
-    console.log(`Yjs WebSocket server running on ws://localhost:${PORT}`);
-});
+const server = http.createServer
