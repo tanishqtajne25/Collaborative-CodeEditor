@@ -4,11 +4,20 @@ const Y = require("yjs");
 const { setupWSConnection, getYDoc } = require("y-websocket/bin/utils");
 const Redis = require("ioredis");
 
+const express = require("express");
+const cors = require("cors");
+const executeRoutes = require("./routes/execute");
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use("/execute", executeRoutes);
+
 // 1. Initialize Redis Clients (Pub & Sub need separate connections)
 const pubClient = new Redis(); // Connects to localhost:6379 by default
 const subClient = new Redis();
 
-const server = http.createServer();
+const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const SYNC_CHANNEL = "yjs-cluster-sync";
