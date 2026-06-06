@@ -56,7 +56,7 @@ const CollaborativeEditor = ({ roomId = 'room-1' }: CollaborativeEditorProps): J
   };
 
   return (
-    <div style={{ height: '100vh', width: '100%' }}>
+    <div style={{ height: '70vh', width: '100%' }}>
       <Editor
         height="100%"
         defaultLanguage="javascript"
