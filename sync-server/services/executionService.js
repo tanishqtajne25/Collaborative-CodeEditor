@@ -8,11 +8,20 @@ async function processCode(code) {
     await fs.mkdir(tempDir, { recursive: true });
 
     const filePath = path.join(tempDir, "test.py");
+    const tempDirAbsolute = path.join(__dirname, "..", "temp");
 
     await fs.writeFile(filePath, code);
 
     return new Promise((resolve, reject) => {
-        const python = spawn("python", [filePath]);
+        const python = spawn("docker", [
+            "run",
+            "--rm",
+            "-v",
+            `${tempDirAbsolute}:/app`,
+            "python:3.13",
+            "python",
+            "/app/test.py",
+        ]);
 
         const timeout = setTimeout(() => {
             python.kill("SIGKILL");
