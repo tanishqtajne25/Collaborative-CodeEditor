@@ -1,57 +1,103 @@
 const fs = require("fs/promises");
 const path = require("path");
+const crypto = require("crypto");
 const { spawn } = require("child_process");
+const languages = require("../config/languages");
 
-async function processCode(code) {
-    const tempDir = path.join(__dirname, "..", "temp");
+async function processCode(code, language = "python") {
+    const langKey = (language || "python").toLowerCase();
+    const config = languages[langKey];
+
+    if (!config) {
+        throw new Error(
+            `Unsupported language: "${language}". Supported languages: ${Object.keys(languages).join(", ")}`
+        );
+    }
+
+    // Use a unique temp directory per execution to prevent race conditions
+    const executionId = crypto.randomUUID();
+    const tempDir = path.join(__dirname, "..", "temp", executionId);
 
     await fs.mkdir(tempDir, { recursive: true });
 
-    const filePath = path.join(tempDir, "test.py");
-    const tempDirAbsolute = path.join(__dirname, "..", "temp");
+    const filePath = path.join(tempDir, config.filename);
+    await fs.writeFile(filePath, code, "utf8");
 
-    await fs.writeFile(filePath, code);
+    // Normalize tempDir path for cross-platform Docker volume mounting (Windows & Linux)
+    const normalizedMountPath = path.resolve(tempDir).replace(/\\/g, "/");
 
     return new Promise((resolve, reject) => {
-        const python = spawn("docker", [
+        const dockerArgs = [
             "run",
             "--rm",
+
+            // ── Security Hardening ──
+            "--cpus=0.5",           // Limit to half a CPU core (cgroups)
+            "--memory=128m",        // Cap memory at 128MB (cgroups)
+            "--pids-limit=50",      // Prevent fork bombs
+            "--network=none",       // No network access from user code (namespace isolation)
+            "--read-only",          // Read-only root filesystem
+            "--tmpfs=/tmp:size=64m", // Writable /tmp in RAM for compilers/binaries
+
+            // ── Volume mount ──
             "-v",
-            `${tempDirAbsolute}:/app`,
-            "python:3.13",
-            "python",
-            "/app/test.py",
-        ]);
+            `${normalizedMountPath}:/app:ro`, // Mount source directory as read-only
+
+            // ── Image & Execution Command ──
+            config.image,
+            ...config.command,
+        ];
+
+        const process = spawn("docker", dockerArgs);
 
         const timeout = setTimeout(() => {
-            python.kill("SIGKILL");
-        }, 5000);
+            process.kill("SIGKILL");
+        }, 7000); // 7s timeout to account for compilation + execution
+
 
         let stdout = "";
         let stderr = "";
 
-        python.stdout.on("data", (data) => {
+        process.stdout.on("data", (data) => {
             stdout += data.toString();
         });
 
-        python.stderr.on("data", (data) => {
+        process.stderr.on("data", (data) => {
             stderr += data.toString();
         });
 
-        python.on("close", (code) => {
+        process.on("close", async (exitCode) => {
             clearTimeout(timeout);
 
+            // Clean up the temp directory after execution
+            try {
+                await fs.rm(tempDir, { recursive: true, force: true });
+            } catch (e) {
+                console.error(`[CLEANUP] Failed to remove ${tempDir}:`, e.message);
+            }
+
+            if (stderr.includes("dockerDesktopLinuxEngine") || stderr.includes("Cannot connect to the Docker daemon")) {
+                stderr += "\n[NOTE] Docker Desktop is not running. Please start Docker Desktop on your machine to execute code in sandboxed containers.";
+            }
+
             resolve({
-                exitCode: code,
+                exitCode,
                 stdout,
                 stderr,
             });
         });
 
-        python.on("error", reject);
+
+        process.on("error", async (err) => {
+            clearTimeout(timeout);
+            try {
+                await fs.rm(tempDir, { recursive: true, force: true });
+            } catch (_) {}
+            reject(err);
+        });
     });
 }
 
 module.exports = {
     processCode,
-};
+};

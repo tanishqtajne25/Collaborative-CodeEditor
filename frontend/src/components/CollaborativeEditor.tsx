@@ -1,54 +1,120 @@
-import React, {useRef} from "react";
+import { useRef, useEffect } from "react";
 import type { JSX } from "react";
-import Editor from "@monaco-editor/react"; // react wrapper
+import Editor, { useMonaco } from "@monaco-editor/react"; // react wrapper
 import * as Y from "yjs"; // crdt engine
 import { WebsocketProvider } from "y-websocket";  // connects yjs doc to backend server
-import {MonacoBinding} from "y-monaco"; // bridges monaco-editor to y-js doc
+import { MonacoBinding } from "y-monaco"; // bridges monaco-editor to y-js doc
 import type { editor as MonacoEditorType } from 'monaco-editor';
 import type { WebsocketProvider as WebsocketProviderType } from 'y-websocket';
 import type { MonacoBinding as MonacoBindingType } from 'y-monaco';
+import { getOrCreateLocalUser, type Collaborator } from "../utils/user";
 
 interface CollaborativeEditorProps {
   roomId?: string;
+  language?: string;
+  defaultCode?: string;
+  onEditorMount?: (editor: MonacoEditorType.IStandaloneCodeEditor) => void;
+  onCollaboratorsChange?: (collaborators: Collaborator[]) => void;
 }
 
 interface YDoc extends Y.Doc {}
 
-const CollaborativeEditor = ({ roomId = 'room-1' }: CollaborativeEditorProps): JSX.Element => { // If no room passed -> room 1 : simple react destructruing
+const CollaborativeEditor = ({
+  roomId = 'room-1',
+  language = 'python',
+  defaultCode,
+  onEditorMount,
+  onCollaboratorsChange,
+}: CollaborativeEditorProps): JSX.Element => {
   const editorRef = useRef<MonacoEditorType.IStandaloneCodeEditor | null>(null);
+  const monaco = useMonaco();
+
+  // Dynamically update Monaco model language when language prop changes
+  useEffect(() => {
+    if (monaco && editorRef.current) {
+      const model = editorRef.current.getModel();
+      if (model) {
+        monaco.editor.setModelLanguage(model, language);
+      }
+    }
+  }, [language, monaco]);
 
   // This fires exactly once when Monaco is fully initialized in the DOM
-  const handleEditorDidMount = (editor: MonacoEditorType.IStandaloneCodeEditor, monaco: typeof MonacoEditorType): void => { // component finished rendering to dom
+  const handleEditorDidMount = (
+    editor: MonacoEditorType.IStandaloneCodeEditor,
+    _monaco: typeof MonacoEditorType
+  ): void => {
     editorRef.current = editor;
 
+    // Expose the editor instance to the parent component
+    if (onEditorMount) {
+      onEditorMount(editor);
+    }
+
     // 1. Initialize the CRDT document
-    const ydoc: YDoc = new Y.Doc(); // y.Doc stores collaborative state, react is no longer source of truth, yjs is
-    //y.docc->shared collaborative memory->has local memory->automatic syncro
+    const ydoc: YDoc = new Y.Doc();
 
     // 2. Connect to your local Node WebSocket server
-    // The roomId acts as the channel name. Anyone on 'room-1' shares this doc.
     const provider: WebsocketProviderType = new WebsocketProvider(
-      'ws://localhost:3001', // ws not http, because websocket protocol
-      roomId, //room name
-      ydoc // shared crdt doc for syncro
+      'ws://localhost:3001',
+      roomId,
+      ydoc
     );
 
-    // 3. Define a shared text type on the document
-    const ytext: Y.Text = ydoc.getText('monaco'); 
+    // 3. Set local awareness user details (for collaborative cursors & presence)
+    const localUser = getOrCreateLocalUser();
+    provider.awareness.setLocalStateField('user', {
+      name: localUser.name,
+      color: localUser.color,
+    });
 
-    // 4. Bind the Yjs document to the Monaco Editor instance
+    // 4. Listen to awareness changes to update active collaborators list
+    const updateCollaborators = () => {
+      const states = provider.awareness.getStates();
+      const list: Collaborator[] = [];
+      states.forEach((state: any, clientId: number) => {
+        if (state.user) {
+          list.push({
+            clientId,
+            name: state.user.name || `User ${clientId}`,
+            color: state.user.color || '#3b82f6',
+            isSelf: clientId === provider.awareness.clientID,
+          });
+        }
+      });
+      if (onCollaboratorsChange) {
+        onCollaboratorsChange(list);
+      }
+    };
+
+    provider.awareness.on('change', updateCollaborators);
+    // Initial call once provider is ready
+    updateCollaborators();
+
+    // 5. Define a shared text type on the document
+    const ytext: Y.Text = ydoc.getText('monaco');
+
+    // If doc is completely fresh/empty and we have default starter code, insert it
+    provider.on('sync', (isSynced: boolean) => {
+      if (isSynced && ytext.length === 0 && defaultCode) {
+        ytext.insert(0, defaultCode);
+      }
+    });
+
+    // 6. Bind the Yjs document to the Monaco Editor instance with awareness
     const model = editor.getModel();
     if (!model) return;
-    
+
     const binding: MonacoBindingType = new MonacoBinding(
-      ytext, // shared crdt text
-      model, // monaco text model
-      new Set([editor]), //set of connected editors->supports multiple editors sharing same model
-      provider.awareness // Handles the cursor tracking automatically
+      ytext,
+      model,
+      new Set([editor]),
+      provider.awareness
     );
 
-    // 5. CRITICAL: Cleanup to prevent memory leaks and zombie WebSockets
+    // 7. CRITICAL: Cleanup to prevent memory leaks and zombie WebSockets
     editor.onDidDispose(() => {
+      provider.awareness.off('change', updateCollaborators);
       binding.destroy();
       provider.disconnect();
       ydoc.destroy();
@@ -59,13 +125,15 @@ const CollaborativeEditor = ({ roomId = 'room-1' }: CollaborativeEditorProps): J
     <div style={{ height: '70vh', width: '100%' }}>
       <Editor
         height="100%"
-        defaultLanguage="javascript"
+        language={language}
         theme="vs-dark"
         onMount={handleEditorDidMount}
         options={{
-          minimap: { enabled: false }, // Hiding minimap keeps the UI cleaner
+          minimap: { enabled: false },
           fontSize: 16,
-          wordWrap: 'on'
+          wordWrap: 'on',
+          automaticLayout: true,
+          scrollBeyondLastLine: false,
         }}
       />
     </div>
@@ -74,4 +142,4 @@ const CollaborativeEditor = ({ roomId = 'room-1' }: CollaborativeEditorProps): J
 
 export default CollaborativeEditor;
 
-// y.doc -> shared collaborative memory -> has local memory -> automatic syncro
+

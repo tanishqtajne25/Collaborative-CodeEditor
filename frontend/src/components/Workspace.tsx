@@ -1,30 +1,50 @@
-import CollaborativeEditor from "./CollaborativeEditor"
-import Terminal from "./Terminal"
+import CollaborativeEditor from "./CollaborativeEditor";
+import Terminal from "./Terminal";
+import type { editor as MonacoEditorType } from "monaco-editor";
+import type { Collaborator } from "../utils/user";
 
 type WorkspaceProps = {
-  code: string
-  setCode: React.Dispatch<React.SetStateAction<string>>
-  output: string
-}
+  roomId: string;
+  language: string;
+  defaultCode?: string;
+  output: string;
+  stderr: string;
+  isRunning: boolean;
+  onEditorMount: (editor: MonacoEditorType.IStandaloneCodeEditor) => void;
+  onCollaboratorsChange?: (collaborators: Collaborator[]) => void;
+};
 
 function Workspace({
-  code,
-  setCode,
-  output
+  roomId,
+  language,
+  defaultCode,
+  output,
+  stderr,
+  isRunning,
+  onEditorMount,
+  onCollaboratorsChange,
 }: WorkspaceProps) {
   return (
     <div
       style={{
         flex: 1,
         display: "flex",
-        flexDirection: "column"
+        flexDirection: "column",
       }}
     >
-      <CollaborativeEditor roomId="room-1" />
+      <CollaborativeEditor
+        roomId={roomId}
+        language={language}
+        defaultCode={defaultCode}
+        onEditorMount={onEditorMount}
+        onCollaboratorsChange={onCollaboratorsChange}
+      />
 
-      <Terminal output={output} />
+      <Terminal output={output} stderr={stderr} isRunning={isRunning} />
     </div>
-  )
+  );
 }
 
-export default Workspace
+export default Workspace;
+
+
